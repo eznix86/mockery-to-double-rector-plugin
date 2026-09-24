@@ -1,0 +1,13 @@
+includes:
+    - vendor/pestphp/pest-plugin-phpstan/extension.neon
+
+parameters:
+    level: max
+    paths:
+        - src
+        - config
+        - tests
+    excludePaths:
+        analyse:
+            - tests/Fixture
+    tmpDir: /tmp/mockery-to-double-rector-phpstan

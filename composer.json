@@ -1,0 +1,54 @@
+{
+  "name": "eznix86/mockery-to-double-rector",
+  "description": "Rector rules to migrate common Mockery test doubles to jasonmccreary/double.",
+  "type": "rector-extension",
+  "license": "MIT",
+  "require": {
+    "php": "^8.4",
+    "rector/rector": "^2.6.1"
+  },
+  "require-dev": {
+    "jasonmccreary/double": "^0.10",
+    "laravel/pint": "^1.30",
+    "mockery/mockery": "^1.6",
+    "pestphp/pest": "^5.0",
+    "pestphp/pest-plugin-phpstan": "^5.0",
+    "pestphp/pest-plugin-rector": "^5.0",
+    "phpstan/phpstan": "^2.2"
+  },
+  "autoload": {
+    "psr-4": {
+      "MockeryToDouble\\Rector\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Tests\\": "tests/"
+    }
+  },
+  "config": {
+    "allow-plugins": {
+      "pestphp/pest-plugin": true
+    },
+    "sort-packages": true
+  },
+  "scripts": {
+    "format": [
+      "rector",
+      "pint --parallel"
+    ],
+    "lint": [
+      "rector --dry-run",
+      "pint --test --parallel"
+    ],
+    "test:types": "phpstan analyse --ansi --memory-limit=1G",
+    "test:unit": "pest",
+    "test": [
+      "Composer\\Config::disableProcessTimeout",
+      "@lint",
+      "@test:types",
+      "@test:unit"
+    ],
+    "check": "@test"
+  }
+}
