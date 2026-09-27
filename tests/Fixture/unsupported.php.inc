@@ -9,6 +9,9 @@ $globalOrder = $mock->shouldReceive('first')->globally()->ordered();
 $customLoose = Mockery::mock(stdClass::class)->shouldIgnoreMissing('fallback');
 $duck = $mock->shouldReceive('quack')->with(Mockery::ducktype('swim'));
 $many = $mock->shouldReceive('contains')->with(Mockery::contains('a', 'b'));
+$inlineDefault = Mockery::mock(stdClass::class)->shouldReceive('find')->andReturn(null)->byDefault();
+$inlinePartial = Mockery::mock(stdClass::class)->makePartial()->shouldReceive('find')->globally()->ordered();
+$partialLoose = Mockery::mock(stdClass::class)->makePartial()->shouldIgnoreMissing('fallback');
 
 -----
 <?php
@@ -22,3 +25,6 @@ $globalOrder = $mock->shouldReceive('first')->globally()->ordered();
 $customLoose = Mockery::mock(stdClass::class)->shouldIgnoreMissing('fallback');
 $duck = $mock->shouldReceive('quack')->with(Mockery::ducktype('swim'));
 $many = $mock->shouldReceive('contains')->with(Mockery::contains('a', 'b'));
+$inlineDefault = Mockery::mock(stdClass::class)->shouldReceive('find')->andReturn(null)->byDefault();
+$inlinePartial = Mockery::mock(stdClass::class)->makePartial()->shouldReceive('find')->globally()->ordered();
+$partialLoose = Mockery::mock(stdClass::class)->makePartial()->shouldIgnoreMissing('fallback');

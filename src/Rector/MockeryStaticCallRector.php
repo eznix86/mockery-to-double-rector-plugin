@@ -6,9 +6,12 @@ namespace MockeryToDouble\Rector\Rector;
 
 use PhpParser\Node;
 use PhpParser\Node\Arg;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\BinaryOp\Identical;
+use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
@@ -43,6 +46,12 @@ final class MockeryStaticCallRector extends AbstractRector
                 return null;
             }
 
+            $targets = $this->splitTargets($node->args[0]);
+            if ($targets === null) {
+                return null;
+            }
+
+            $node->args = [...$targets, ...array_slice($node->args, 1)];
             $node->class = new FullyQualified('JMac\\Testing\\Double');
             $node->name = new Identifier('for');
             $node->setAttribute(self::KIND_ATTRIBUTE, 'double');
@@ -109,7 +118,7 @@ final class MockeryStaticCallRector extends AbstractRector
     {
         $firstArg = $node->args[0] ?? null;
         $expectedKey = $firstArg instanceof Arg ? $firstArg->value : null;
-        if (! $expectedKey instanceof Node\Expr) {
+        if (! $expectedKey instanceof Expr) {
             return null;
         }
 
@@ -138,6 +147,79 @@ final class MockeryStaticCallRector extends AbstractRector
 
         return str_starts_with($firstArg->value->value, 'alias:')
             || str_starts_with($firstArg->value->value, 'overload:');
+    }
+
+    /** @return list<Arg>|null */
+    private function splitTargets(Node $arg): ?array
+    {
+        if (! $arg instanceof Arg) {
+            return null;
+        }
+
+        if ($arg->value instanceof String_ && ! str_contains($arg->value->value, ',') && ! str_contains($arg->value->value, '[')) {
+            return [$arg];
+        }
+
+        if (! $arg->value instanceof String_ && ! $arg->value instanceof Concat) {
+            return [$arg];
+        }
+
+        $targets = [];
+        $current = null;
+
+        foreach ($this->flattenConcat($arg->value) as $piece) {
+            if ($piece instanceof ClassConstFetch && $this->isName($piece->name, 'class')) {
+                if ($current !== null) {
+                    return null;
+                }
+
+                $current = $piece;
+
+                continue;
+            }
+
+            if (! $piece instanceof String_ || str_contains($piece->value, '[')) {
+                return null;
+            }
+
+            foreach (explode(',', $piece->value) as $index => $segment) {
+                if ($index > 0) {
+                    if ($current === null) {
+                        return null;
+                    }
+
+                    $targets[] = new Arg($current);
+                    $current = null;
+                }
+
+                $segment = trim($segment);
+                if ($segment !== '') {
+                    if ($current !== null) {
+                        return null;
+                    }
+
+                    $current = new String_($segment);
+                }
+            }
+        }
+
+        if ($current === null) {
+            return null;
+        }
+
+        $targets[] = new Arg($current);
+
+        return $targets;
+    }
+
+    /** @return list<Expr> */
+    private function flattenConcat(Expr $expr): array
+    {
+        if (! $expr instanceof Concat) {
+            return [$expr];
+        }
+
+        return [...$this->flattenConcat($expr->left), ...$this->flattenConcat($expr->right)];
     }
 
     private function hasConstructorArguments(StaticCall $node): bool
