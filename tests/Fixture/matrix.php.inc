@@ -47,11 +47,11 @@ $repository->shouldReceive('match')->with(
 use App\Contracts\Repository;
 use Mockery;
 
-$strict = \JMac\Testing\Double::for(Repository::class)->strict();
+$strict = \JMac\Testing\Double::for(Repository::class);
 $partial = \JMac\Testing\Double::for(Repository::class)->passthru();
 $deferred = \JMac\Testing\Double::for(Repository::class)->passthru();
 $loose = \JMac\Testing\Double::for(Repository::class);
-$repository = \JMac\Testing\Double::for(Repository::class)->strict();
+$repository = \JMac\Testing\Double::for(Repository::class);
 
 $repository->allows('fail')->throws(new RuntimeException('nope'));
 $repository->allows('failClass')->throws(new RuntimeException('nope', 10));

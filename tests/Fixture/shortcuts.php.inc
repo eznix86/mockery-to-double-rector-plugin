@@ -32,18 +32,18 @@ $flexible->shouldReceive('count')->zeroOrMoreTimes()->andReturn(3);
 use App\Contracts\Repository;
 use Mockery;
 
-$repository = \JMac\Testing\Double::for(Repository::class)->strict();
+$repository = \JMac\Testing\Double::for(Repository::class);
 $repository->allows('exists')->returns(true);
 $repository->expects('save')->with('draft')->returns(false);
 $repository->allows('find')->returns(null);
 
-$builder = \JMac\Testing\Double::for(Builder::class)->strict();
+$builder = \JMac\Testing\Double::for(Builder::class);
 $builder->allows('where')->returns($builder);
-$this->builder = \JMac\Testing\Double::for(Builder::class)->strict();
+$this->builder = \JMac\Testing\Double::for(Builder::class);
 $this->builder->expects('orderBy')->times(2)->returns($this->builder);
 $inline = Mockery::mock(Repository::class)->shouldReceive('fluent')->andReturnSelf();
 
-$agent = \JMac\Testing\Double::for(Agent::class)->strict();
+$agent = \JMac\Testing\Double::for(Agent::class);
 $agent->expects('prompt')->never();
 $multiple = Mockery::mock(Agent::class);
 $multiple->shouldNotReceive('stream', 'prompt');
@@ -52,5 +52,5 @@ $provider = Mockery::mock(Provider::class);
 $provider->shouldNotReceive('name');
 $provider->shouldReceive('name')->once()->andReturn('fake');
 
-$flexible = \JMac\Testing\Double::for(Repository::class)->strict();
+$flexible = \JMac\Testing\Double::for(Repository::class);
 $flexible->allows('count')->returns(3);

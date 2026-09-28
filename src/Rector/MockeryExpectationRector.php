@@ -48,9 +48,13 @@ final class MockeryExpectationRector extends AbstractRector
 
         $name = $node->name->toString();
 
-        if (in_array($name, ['shouldReceive', 'shouldNotReceive', 'shouldHaveReceived', 'shouldNotHaveReceived'], true)
+        if (in_array($name, ['shouldReceive', 'shouldNotReceive', 'shouldHaveReceived', 'shouldNotHaveReceived', 'shouldNotHaveBeenCalled'], true)
             && $node->getAttribute(MockeryDoubleOwnershipRector::OWNED_ATTRIBUTE) !== true) {
             return null;
+        }
+
+        if ($name === 'shouldNotHaveBeenCalled' && $node->args === []) {
+            return $this->rename($node, 'unused');
         }
 
         if ($name === 'shouldReceive'
@@ -82,7 +86,7 @@ final class MockeryExpectationRector extends AbstractRector
             return null;
         }
 
-        if ($name === 'zeroOrMoreTimes' && $kind === self::EXPECTATION && $node->args === [] && $node->var instanceof MethodCall) {
+        if (in_array($name, ['zeroOrMoreTimes', 'byDefault'], true) && $kind === self::EXPECTATION && $node->args === [] && $node->var instanceof MethodCall) {
             return $node->var;
         }
 

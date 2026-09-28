@@ -47,7 +47,7 @@ final class GuardTest
 {
     public function testGuest(): void
     {
-        $guard = \JMac\Testing\Double::for(Guard::class)->strict();
+        $guard = \JMac\Testing\Double::for(Guard::class);
         $guard->allows('guest')->returns(true);
     }
 
@@ -62,23 +62,23 @@ final class GuardTest
 }
 
 test('guest', function (): void {
-    $agent = \JMac\Testing\Double::for(Agent::class)->strict();
+    $agent = \JMac\Testing\Double::for(Agent::class);
     $agent->expects('prompt')->never();
 });
 
 test('prompt', function (): void {
-    $agent = \JMac\Testing\Double::for(Agent::class)->strict();
+    $agent = \JMac\Testing\Double::for(Agent::class);
     $agent->expects('prompt')->returns($response);
 });
 
 describe('nested tests', function (): void {
     test('first', function (): void {
-        $layout = \JMac\Testing\Double::for(FieldLayout::class)->strict();
+        $layout = \JMac\Testing\Double::for(FieldLayout::class);
         $layout->allows('getTabs')->returns([]);
     });
 
     test('second', function (): void {
-        $layout = \JMac\Testing\Double::for(FieldLayout::class)->strict();
+        $layout = \JMac\Testing\Double::for(FieldLayout::class);
         $layout->allows('getTabs')->returns([]);
     });
 });

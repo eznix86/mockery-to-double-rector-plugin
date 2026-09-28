@@ -31,7 +31,7 @@ test('keeps inline doubles of classes with reserved method names', function (): 
 <?php
 
 beforeEach(function (): void {
-    $this->cache = \JMac\Testing\Double::for(Cache::class)->strict();
+    $this->cache = \JMac\Testing\Double::for(Cache::class);
     $this->cache->allows('get')->returns(1);
 });
 

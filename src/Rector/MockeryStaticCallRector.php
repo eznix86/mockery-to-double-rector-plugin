@@ -52,14 +52,6 @@ final class MockeryStaticCallRector extends AbstractRector
             $node->setAttribute(self::KIND_ATTRIBUTE, 'double');
             $node->setAttribute('mockery_to_double_factory', $name);
 
-            if ($name === 'mock') {
-                $strict = new MethodCall($node, new Identifier('strict'));
-                $strict->setAttribute(self::KIND_ATTRIBUTE, 'double');
-                $strict->setAttribute('mockery_to_double_factory', $name);
-
-                return $strict;
-            }
-
             return $node;
         }
 

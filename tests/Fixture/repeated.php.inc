@@ -15,6 +15,6 @@ $finder = Mockery::mock(Repository::class);
 $finder->shouldReceive('find')->andReturn($first);
 $finder->shouldReceive('find')->andReturn($second);
 
-$saver = \JMac\Testing\Double::for(Repository::class)->strict();
+$saver = \JMac\Testing\Double::for(Repository::class);
 $saver->expects('save')->with(1)->returns(true);
 $saver->expects('save')->with(2)->returns(false);

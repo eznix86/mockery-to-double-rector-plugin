@@ -31,10 +31,10 @@ test('maps andReturns', function (): void {
 <?php
 
 test('expands quick definitions', function (): void {
-    $fields = \JMac\Testing\Double::for(FieldsInterface::class)->strict();
+    $fields = \JMac\Testing\Double::for(FieldsInterface::class);
     $fields->allows('getVersion')->returns($version);
     $fields->allows('getVariant')->returns(2);
-    $this->provider = \JMac\Testing\Double::for(NodeProviderInterface::class)->strict();
+    $this->provider = \JMac\Testing\Double::for(NodeProviderInterface::class);
     $this->provider->allows('getNode')->returns($node);
 });
 
@@ -53,6 +53,6 @@ test('keeps pipe-separated targets', function (): void {
 });
 
 test('maps andReturns', function (): void {
-    $repository = \JMac\Testing\Double::for(Repository::class)->strict();
+    $repository = \JMac\Testing\Double::for(Repository::class);
     $repository->allows('all')->returns([]);
 });
