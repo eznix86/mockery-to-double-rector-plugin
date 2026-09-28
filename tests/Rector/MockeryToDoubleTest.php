@@ -17,3 +17,23 @@ it('covers the safe entries in Double\'s Mockery migration matrix', function ():
 it('preserves repeated identical expectations for manual sequence migration', function (): void {
     $this->doTestFile(__DIR__.'/../Fixture/repeated.php.inc');
 });
+
+it('migrates return shortcuts and negative expectations', function (): void {
+    $this->doTestFile(__DIR__.'/../Fixture/shortcuts.php.inc');
+});
+
+it('splits comma-separated Mockery targets into separate Double targets', function (): void {
+    $this->doTestFile(__DIR__.'/../Fixture/targets.php.inc');
+});
+
+it('detects repeated expectations per test, not per file', function (): void {
+    $this->doTestFile(__DIR__.'/../Fixture/repeated_scopes.php.inc');
+});
+
+it('merges consecutive single-call expectations into one sequential answer', function (): void {
+    $this->doTestFile(__DIR__.'/../Fixture/sequential.php.inc');
+});
+
+it('converts a double only when its factory and every expectation on it can convert', function (): void {
+    $this->doTestFile(__DIR__.'/../Fixture/ownership.php.inc');
+});

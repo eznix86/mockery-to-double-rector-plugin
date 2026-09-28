@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace MockeryToDouble\Rector\Rector;
 
+use MockeryToDouble\Rector\Support\MockeryFactory;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
-use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp\Identical;
 use PhpParser\Node\Expr\MethodCall;
@@ -15,7 +16,6 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Param;
-use PhpParser\Node\Scalar\String_;
 use Rector\Rector\AbstractRector;
 
 /** Migrates Mockery factories and argument matchers with direct equivalents. */
@@ -39,10 +39,14 @@ final class MockeryStaticCallRector extends AbstractRector
         $name = $node->name->toString();
 
         if (in_array($name, ['mock', 'spy'], true)) {
-            if ($node->args === [] || $this->usesUnsupportedMockeryTarget($node) || $this->hasConstructorArguments($node)) {
+            $targets = MockeryFactory::isConvertible($node) && $node->getAttribute(MockeryDoubleOwnershipRector::KEEP_ATTRIBUTE) !== true
+                ? MockeryFactory::targets($node->args[0])
+                : null;
+            if ($targets === null) {
                 return null;
             }
 
+            $node->args = [...$targets, ...array_slice($node->args, 1)];
             $node->class = new FullyQualified('JMac\\Testing\\Double');
             $node->name = new Identifier('for');
             $node->setAttribute(self::KIND_ATTRIBUTE, 'double');
@@ -57,6 +61,10 @@ final class MockeryStaticCallRector extends AbstractRector
             }
 
             return $node;
+        }
+
+        if ($node->getAttribute(MockeryDoubleOwnershipRector::OWNED_ATTRIBUTE) !== true) {
+            return null;
         }
 
         if ($name === 'notAnyOf') {
@@ -109,7 +117,7 @@ final class MockeryStaticCallRector extends AbstractRector
     {
         $firstArg = $node->args[0] ?? null;
         $expectedKey = $firstArg instanceof Arg ? $firstArg->value : null;
-        if (! $expectedKey instanceof Node\Expr) {
+        if (! $expectedKey instanceof Expr) {
             return null;
         }
 
@@ -127,27 +135,5 @@ final class MockeryStaticCallRector extends AbstractRector
             new Identifier('contains'),
             [new Arg($predicate)],
         );
-    }
-
-    private function usesUnsupportedMockeryTarget(StaticCall $node): bool
-    {
-        $firstArg = $node->args[0] ?? null;
-        if (! $firstArg instanceof Arg || ! $firstArg->value instanceof String_) {
-            return false;
-        }
-
-        return str_starts_with($firstArg->value->value, 'alias:')
-            || str_starts_with($firstArg->value->value, 'overload:');
-    }
-
-    private function hasConstructorArguments(StaticCall $node): bool
-    {
-        foreach (array_slice($node->args, 1) as $arg) {
-            if ($arg instanceof Arg && $arg->value instanceof Array_) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

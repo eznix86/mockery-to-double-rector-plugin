@@ -7,8 +7,10 @@ namespace MockeryToDouble\Rector\Rector;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar;
 use PhpParser\NodeFinder;
@@ -29,13 +31,63 @@ final class RepeatedMockeryExpectationRector extends AbstractRector
     /** @param FileNode $node */
     public function refactor(Node $node): null
     {
-        $methodCalls = array_values((new NodeFinder)->findInstanceOf($node->stmts, MethodCall::class));
+        $nodeFinder = new NodeFinder;
+        $scopes = $this->findOutermostFunctionLikes($node->stmts);
+        $scopedCalls = [];
 
+        foreach ($scopes as $scope) {
+            $methodCalls = array_values($nodeFinder->findInstanceOf($scope, MethodCall::class));
+            $this->markRepeatedRoots($methodCalls);
+
+            foreach ($methodCalls as $methodCall) {
+                $scopedCalls[spl_object_id($methodCall)] = true;
+            }
+        }
+
+        $this->markRepeatedRoots(array_values(array_filter(
+            $nodeFinder->findInstanceOf($node->stmts, MethodCall::class),
+            static fn (MethodCall $methodCall): bool => ! isset($scopedCalls[spl_object_id($methodCall)]),
+        )));
+
+        return null;
+    }
+
+    /**
+     * @param  array<Node>  $nodes
+     * @return list<FunctionLike>
+     */
+    private function findOutermostFunctionLikes(array $nodes): array
+    {
+        $nodeFinder = new NodeFinder;
+        $functionLikes = $nodeFinder->findInstanceOf($nodes, FunctionLike::class);
+        $nested = [];
+
+        foreach ($functionLikes as $functionLike) {
+            foreach ($nodeFinder->findInstanceOf((array) $functionLike->getStmts(), FunctionLike::class) as $inner) {
+                $nested[spl_object_id($inner)] = true;
+            }
+
+            if ($functionLike instanceof ArrowFunction) {
+                foreach ($nodeFinder->findInstanceOf($functionLike->expr, FunctionLike::class) as $inner) {
+                    $nested[spl_object_id($inner)] = true;
+                }
+            }
+        }
+
+        return array_values(array_filter(
+            $functionLikes,
+            static fn (FunctionLike $functionLike): bool => ! isset($nested[spl_object_id($functionLike)]),
+        ));
+    }
+
+    /** @param list<MethodCall> $methodCalls */
+    private function markRepeatedRoots(array $methodCalls): void
+    {
         /** @var array<string, list<MethodCall>> $rootsBySignature */
         $rootsBySignature = [];
 
         foreach ($methodCalls as $methodCall) {
-            if (! $methodCall->name instanceof Identifier || $methodCall->name->toString() !== 'shouldReceive') {
+            if (! $methodCall->name instanceof Identifier || ! in_array($methodCall->name->toString(), ['shouldReceive', 'shouldNotReceive'], true)) {
                 continue;
             }
 
@@ -54,8 +106,6 @@ final class RepeatedMockeryExpectationRector extends AbstractRector
                 $root->setAttribute(self::SKIP_ATTRIBUTE, true);
             }
         }
-
-        return null;
     }
 
     /** @param list<MethodCall> $methodCalls */

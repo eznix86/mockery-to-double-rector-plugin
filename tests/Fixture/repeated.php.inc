@@ -1,16 +1,20 @@
 <?php
 
-$repository->shouldReceive('find')->once()->andReturn($first);
-$repository->shouldReceive('find')->once()->andReturn($second);
+$finder = Mockery::mock(Repository::class);
+$finder->shouldReceive('find')->andReturn($first);
+$finder->shouldReceive('find')->andReturn($second);
 
-$repository->shouldReceive('save')->with(1)->once()->andReturn(true);
-$repository->shouldReceive('save')->with(2)->once()->andReturn(false);
+$saver = Mockery::mock(Repository::class);
+$saver->shouldReceive('save')->with(1)->once()->andReturn(true);
+$saver->shouldReceive('save')->with(2)->once()->andReturn(false);
 
 -----
 <?php
 
-$repository->shouldReceive('find')->once()->andReturn($first);
-$repository->shouldReceive('find')->once()->andReturn($second);
+$finder = Mockery::mock(Repository::class);
+$finder->shouldReceive('find')->andReturn($first);
+$finder->shouldReceive('find')->andReturn($second);
 
-$repository->expects('save')->with(1)->returns(true);
-$repository->expects('save')->with(2)->returns(false);
+$saver = \JMac\Testing\Double::for(Repository::class)->strict();
+$saver->expects('save')->with(1)->returns(true);
+$saver->expects('save')->with(2)->returns(false);

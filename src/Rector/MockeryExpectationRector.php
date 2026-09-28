@@ -8,9 +8,12 @@ use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Name\FullyQualified;
@@ -45,8 +48,12 @@ final class MockeryExpectationRector extends AbstractRector
 
         $name = $node->name->toString();
 
+        if (in_array($name, ['shouldReceive', 'shouldNotReceive', 'shouldHaveReceived', 'shouldNotHaveReceived'], true)
+            && $node->getAttribute(MockeryDoubleOwnershipRector::OWNED_ATTRIBUTE) !== true) {
+            return null;
+        }
+
         if ($name === 'shouldReceive'
-            && $node->getAttribute(RepeatedMockeryExpectationRector::SKIP_ATTRIBUTE) !== true
             && count($node->args) === 1
             && $node->args[0] instanceof Arg
             && ! $node->args[0]->value instanceof Expr\Array_) {
@@ -61,6 +68,10 @@ final class MockeryExpectationRector extends AbstractRector
             return $this->createReceivedCall($node, true);
         }
 
+        if ($name === 'shouldNotReceive') {
+            return $this->createNeverExpectation($node);
+        }
+
         $kind = $this->findChainKind($node);
 
         if ($kind === self::DOUBLE) {
@@ -69,6 +80,10 @@ final class MockeryExpectationRector extends AbstractRector
 
         if (! in_array($kind, [self::EXPECTATION, self::RECEIVED], true)) {
             return null;
+        }
+
+        if ($name === 'withAnyArgs' && $node->args === [] && $node->var instanceof MethodCall) {
+            return $node->var;
         }
 
         if ($name === 'withNoArgs') {
@@ -104,6 +119,10 @@ final class MockeryExpectationRector extends AbstractRector
         return match ($name) {
             'andReturn' => $this->rename($node, 'returns'),
             'andReturnUsing' => $this->rename($node, 'resolves'),
+            'andReturnTrue' => $this->replaceReturnShortcut($node, 'true'),
+            'andReturnFalse' => $this->replaceReturnShortcut($node, 'false'),
+            'andReturnNull' => $this->replaceReturnShortcut($node, 'null'),
+            'andReturnSelf' => $this->replaceReturnSelf($node),
             'andThrow', 'andThrows' => $this->renameThrowableCall($node),
             'once' => $this->replaceExpectationCountShortcut($node, 1),
             'twice' => $this->replaceExpectationCountShortcut($node, 2),
@@ -175,6 +194,53 @@ final class MockeryExpectationRector extends AbstractRector
         $never->setAttribute(self::KIND_ATTRIBUTE, self::RECEIVED);
 
         return $never;
+    }
+
+    private function createNeverExpectation(MethodCall $node): ?MethodCall
+    {
+        if (count($node->args) !== 1
+            || ! $node->args[0] instanceof Arg
+            || ! $node->args[0]->value instanceof String_) {
+            return null;
+        }
+
+        $expects = $this->markAndRename($node, self::EXPECTATION, 'expects');
+        $never = new MethodCall($expects, new Identifier('never'));
+        $never->setAttribute(self::KIND_ATTRIBUTE, self::EXPECTATION);
+
+        return $never;
+    }
+
+    private function replaceReturnShortcut(MethodCall $node, string $constant): ?MethodCall
+    {
+        if ($node->args !== []) {
+            return $this->restoreMockeryChain($node);
+        }
+
+        $node->args = [new Arg(new ConstFetch(new Name($constant)))];
+
+        return $this->rename($node, 'returns');
+    }
+
+    private function replaceReturnSelf(MethodCall $node): ?MethodCall
+    {
+        $root = $this->findMarkedNode($node, self::EXPECTATION);
+        if ($node->args !== [] || ! $root instanceof MethodCall || ! $this->isReusableReceiver($root->var)) {
+            return $this->restoreMockeryChain($node);
+        }
+
+        $node->args = [new Arg(clone $root->var)];
+
+        return $this->rename($node, 'returns');
+    }
+
+    private function isReusableReceiver(Expr $receiver): bool
+    {
+        if ($receiver instanceof PropertyFetch) {
+            return $receiver->name instanceof Identifier && $receiver->var instanceof Variable;
+        }
+
+        return $receiver instanceof Variable && is_string($receiver->name) && $receiver->name !== 'this';
     }
 
     private function renameThrowableCall(MethodCall $node): ?MethodCall
@@ -287,9 +353,14 @@ final class MockeryExpectationRector extends AbstractRector
 
     private function restoreMockeryChain(MethodCall $node): null
     {
+        $previous = $node;
         $current = $node->var;
 
         while ($current instanceof MethodCall) {
+            if ($current->getAttribute(self::KIND_ATTRIBUTE) === self::DOUBLE) {
+                break;
+            }
+
             if ($current->name instanceof Identifier) {
                 $originalName = match ($current->name->toString()) {
                     'allows', 'expects' => 'shouldReceive',
@@ -306,8 +377,11 @@ final class MockeryExpectationRector extends AbstractRector
             }
 
             $current->setAttribute(self::KIND_ATTRIBUTE, null);
+            $previous = $current;
             $current = $current->var;
         }
+
+        $previous->var = $this->restoreDoubleChain($current);
 
         return null;
     }
@@ -327,16 +401,41 @@ final class MockeryExpectationRector extends AbstractRector
 
     private function restoreMockeryDouble(MethodCall $node): void
     {
-        $factory = $this->findDoubleFactory($node);
-        if (! $factory instanceof StaticCall) {
-            return;
+        $node->var = $this->restoreDoubleChain($node->var);
+    }
+
+    private function restoreDoubleChain(Expr $double): Expr
+    {
+        if (($double instanceof MethodCall || $double instanceof StaticCall)
+            && $double->getAttribute(self::KIND_ATTRIBUTE) !== self::DOUBLE) {
+            return $double;
         }
 
-        $factoryName = $factory->getAttribute('mockery_to_double_factory');
-        $factory->class = new Name('Mockery');
-        $factory->name = new Identifier(is_string($factoryName) ? $factoryName : 'mock');
-        $factory->setAttribute(self::KIND_ATTRIBUTE, null);
-        $node->var = $factory;
+        if ($double instanceof StaticCall) {
+            $factoryName = $double->getAttribute('mockery_to_double_factory');
+            $double->class = new Name('Mockery');
+            $double->name = new Identifier(is_string($factoryName) ? $factoryName : 'mock');
+            $double->setAttribute(self::KIND_ATTRIBUTE, null);
+
+            return $double;
+        }
+
+        if (! $double instanceof MethodCall) {
+            return $double;
+        }
+
+        if ($this->isName($double->name, 'strict')) {
+            return $this->restoreDoubleChain($double->var);
+        }
+
+        if ($this->isName($double->name, 'passthru')) {
+            $double->name = new Identifier('makePartial');
+        }
+
+        $double->setAttribute(self::KIND_ATTRIBUTE, null);
+        $double->var = $this->restoreDoubleChain($double->var);
+
+        return $double;
     }
 
     private function findDoubleFactory(MethodCall $node): ?StaticCall
