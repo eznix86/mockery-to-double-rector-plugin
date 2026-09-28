@@ -18,8 +18,8 @@ use App\Contracts\Agent;
 use App\Contracts\CanActAsTool;
 use Mockery;
 
-$concatenated = \JMac\Testing\Double::for(Agent::class, CanActAsTool::class)->strict();
-$spaced = \JMac\Testing\Double::for(Agent::class, CanActAsTool::class)->strict();
+$concatenated = \JMac\Testing\Double::for(Agent::class, CanActAsTool::class);
+$spaced = \JMac\Testing\Double::for(Agent::class, CanActAsTool::class);
 $literal = \JMac\Testing\Double::for('App\Contracts\Agent', 'App\Contracts\CanActAsTool');
 $partial = Mockery::mock('App\Repository[find,save]');
 $dynamic = Mockery::mock($prefix.'Agent');

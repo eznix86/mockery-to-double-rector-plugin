@@ -13,7 +13,7 @@ final class OwnershipTest
         $this->herd->shouldReceive('isInstalled')->andReturn(true);
     }
 
-    public function testByDefaultKeepsTheWholeDouble(): void
+    public function testByDefaultBecomesAPlainFallback(): void
     {
         $this->config->shouldReceive('get')->andReturn(false)->byDefault();
         $this->config->shouldReceive('has')->andReturn(true);
@@ -126,8 +126,8 @@ final class OwnershipTest
 {
     protected function setUp(): void
     {
-        $this->herd = \JMac\Testing\Double::for(Herd::class)->strict();
-        $this->config = Mockery::mock(Config::class);
+        $this->herd = \JMac\Testing\Double::for(Herd::class);
+        $this->config = \JMac\Testing\Double::for(Config::class);
     }
 
     public function testPropertyDoubleFromSetUp(): void
@@ -135,23 +135,23 @@ final class OwnershipTest
         $this->herd->allows('isInstalled')->returns(true);
     }
 
-    public function testByDefaultKeepsTheWholeDouble(): void
+    public function testByDefaultBecomesAPlainFallback(): void
     {
-        $this->config->shouldReceive('get')->andReturn(false)->byDefault();
-        $this->config->shouldReceive('has')->andReturn(true);
+        $this->config->allows('get')->returns(false);
+        $this->config->allows('has')->returns(true);
     }
 
     public function testUntypedDouble(): void
     {
         $request = Mockery::mock();
-        $request->shouldReceive('user')->andReturn($user = \JMac\Testing\Double::for(User::class)->strict());
+        $request->shouldReceive('user')->andReturn($user = \JMac\Testing\Double::for(User::class));
         $user->allows('currentAccessToken')->returns($token = Mockery::mock());
         $token->shouldReceive('can')->with(Mockery::any())->andReturn(true);
     }
 
     public function testLaravelMockHelper(): void
     {
-        $mock = \JMac\Testing\Double::for(Limiter::class)->strict();
+        $mock = \JMac\Testing\Double::for(Limiter::class);
         $mock->expects('hit');
 
         $this->mock(Request::class, function ($mock) {
@@ -182,13 +182,13 @@ final class OwnershipTest
         $inertia = Mockery::mock(Inertia::class);
         $inertia->expects('render')->andReturn($response);
 
-        $portable = \JMac\Testing\Double::for(Inertia::class)->strict();
+        $portable = \JMac\Testing\Double::for(Inertia::class);
         $portable->expects('render');
     }
 
     public function testArrowFunctionCapture(): void
     {
-        $clock = \JMac\Testing\Double::for(Clock::class)->strict();
+        $clock = \JMac\Testing\Double::for(Clock::class);
         $resolve = fn () => $clock->allows('now')->returns($now);
     }
 
@@ -197,7 +197,7 @@ final class OwnershipTest
         $magic = Mockery::mock(\Mockery\Generator\Parameter::class);
         $magic->shouldReceive('getPosition')->andReturn(1);
 
-        $declared = \JMac\Testing\Double::for(\Mockery\Generator\Parameter::class)->strict();
+        $declared = \JMac\Testing\Double::for(\Mockery\Generator\Parameter::class);
         $declared->expects('getName');
 
         $client = Mockery::mock(Client::class);
@@ -209,7 +209,7 @@ final class OwnershipTest
 
     public function testNestedPropertyDouble(): void
     {
-        $token->refreshToken = \JMac\Testing\Double::for(RefreshToken::class)->strict();
+        $token->refreshToken = \JMac\Testing\Double::for(RefreshToken::class);
         $token->refreshToken->expects('revoke');
         $registry['cache'] = Mockery::mock(Cache::class);
     }
@@ -224,7 +224,7 @@ final class OwnershipTest
         $channels->shouldReceive('unsubscribeFromAll')->once()->with($first);
         $channels->shouldReceive('unsubscribeFromAll')->once()->with($second);
 
-        $routes = \JMac\Testing\Double::for(Router::class)->strict();
+        $routes = \JMac\Testing\Double::for(Router::class);
         $routes->expects('get')->with('/a');
         $routes->expects('get')->with('/b');
     }
@@ -235,7 +235,7 @@ final class OwnershipTest
         $generic->shouldReceive('get')->andReturn(1);
         $generic->shouldReceive('get')->with('key')->andReturn(2);
 
-        $specific = \JMac\Testing\Double::for(Cache::class)->strict();
+        $specific = \JMac\Testing\Double::for(Cache::class);
         $specific->allows('get')->with('key')->returns(2);
         $specific->allows('get')->returns(1);
     }

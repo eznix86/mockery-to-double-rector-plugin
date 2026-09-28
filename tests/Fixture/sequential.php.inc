@@ -49,14 +49,14 @@ it('drops withAnyArgs', function () {
 <?php
 
 it('reconnects', function () {
-    $clientFactory = \JMac\Testing\Double::for(RedisClientFactory::class)->strict();
+    $clientFactory = \JMac\Testing\Double::for(RedisClientFactory::class);
     // Publisher client
     // Subscriber client
     $clientFactory->expects('make')->times(2)->returns($publisher, $subscriber);
 });
 
 it('keeps argument-specific answers in order', function () {
-    $repository = \JMac\Testing\Double::for(Repository::class)->strict();
+    $repository = \JMac\Testing\Double::for(Repository::class);
     $repository->expects('find')->with(1)->times(3)->returns($first, $second, $third);
 });
 
@@ -81,6 +81,6 @@ it('leaves sequences with a negative expectation alone', function () {
 });
 
 it('drops withAnyArgs', function () {
-    $clients = \JMac\Testing\Double::for(ClientRepository::class)->strict();
+    $clients = \JMac\Testing\Double::for(ClientRepository::class);
     $clients->allows('findActive')->returns($client);
 });

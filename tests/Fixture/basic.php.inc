@@ -19,7 +19,7 @@ $spy->shouldHaveReceived('store')->with(Mockery::type('array'));
 use App\Contracts\Repository;
 use Mockery;
 
-$repository = \JMac\Testing\Double::for(Repository::class)->strict();
+$repository = \JMac\Testing\Double::for(Repository::class);
 $repository->expects('find')->with(123)->returns($book);
 $repository->expects('save')->times(2)->returns(true);
 $repository->expects('delete')->times(3);

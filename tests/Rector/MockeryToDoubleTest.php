@@ -45,3 +45,7 @@ it('expands Mockery quick definitions into one expectation per method', function
 it('keeps doubles whose expectations repeat at runtime or depend on Mockery objects', function (): void {
     $this->doTestFile(__DIR__.'/../Fixture/runtime_shapes.php.inc');
 });
+
+it('turns byDefault() into a plain fallback and shouldNotHaveBeenCalled() into unused()', function (): void {
+    $this->doTestFile(__DIR__.'/../Fixture/defaults.php.inc');
+});

@@ -53,13 +53,13 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
 
     private const MOCKERY_API = [
         'allows', 'expects', 'byDefault', 'getMock', 'makePartial', 'shouldDeferMissing', 'shouldIgnoreMissing',
-        'shouldAllowMockingProtectedMethods', 'shouldAllowMockingMethod', 'shouldHaveBeenCalled', 'shouldNotHaveBeenCalled',
+        'shouldAllowMockingProtectedMethods', 'shouldAllowMockingMethod', 'shouldHaveBeenCalled',
     ];
 
     private const EXPECTATION_METHODS = [
         'with', 'withNoArgs', 'withAnyArgs', 'withArgs', 'andReturn', 'andReturns', 'andReturnUsing', 'andReturnTrue', 'andReturnFalse',
         'andReturnNull', 'andReturnSelf', 'andThrow', 'andThrows', 'once', 'twice', 'times', 'atLeast', 'atMost', 'between',
-        'never', 'ordered', 'zeroOrMoreTimes',
+        'never', 'ordered', 'zeroOrMoreTimes', 'byDefault',
     ];
 
     private const RECEIVED_METHODS = ['with', 'withNoArgs', 'withAnyArgs', 'withArgs', 'once', 'twice', 'times', 'never'];
@@ -74,6 +74,12 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
     private const REGISTRATIONS = ['swap', 'instance', 'singleton', 'bind', 'scoped'];
 
     private const PEST_FUNCTIONS = ['test', 'it', 'describe', 'beforeEach', 'afterEach', 'beforeAll', 'afterAll'];
+
+    private const PEST_SETUP_FUNCTIONS = ['beforeEach', 'beforeAll'];
+
+    private const SETUP_METHODS = ['setup', 'setupbeforeclass'];
+
+    private const COUNT_METHODS = ['once', 'twice', 'times', 'atLeast', 'atMost', 'between', 'never'];
 
     private int $scopeCount = 0;
 
@@ -104,6 +110,19 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
 
     private bool $repeating = false;
 
+    private int $unitCount = 0;
+
+    private string $unit = 'file';
+
+    /** @var array<int, string> */
+    private array $pestUnits = [];
+
+    /** @var array<string, true> */
+    private array $setupUnits = [];
+
+    /** @var array<string, array<string, list<array{string, string}>>> */
+    private array $propertyExpectations = [];
+
     /** @return array<class-string<Node>> */
     public function getNodeTypes(): array
     {
@@ -121,8 +140,13 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
         $this->matchers = [];
         $this->callbacks = [];
         $this->repeating = false;
+        $this->unit = 'file';
+        $this->pestUnits = [];
+        $this->setupUnits = [];
+        $this->propertyExpectations = [];
 
         $this->walk($node->stmts, $this->newScope());
+        $this->disqualifyRepeatedPropertyExpectations();
 
         foreach ($this->factories as $binding => $factories) {
             $owned = ! isset($this->disqualified[$binding])
@@ -155,7 +179,19 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
         }
 
         if ($node instanceof ClassMethod || $node instanceof Function_) {
+            $unit = $this->enterUnit($node instanceof ClassMethod && in_array($node->name->toLowerString(), self::SETUP_METHODS, true));
             $this->walk($node->stmts ?? [], $this->declareParams($node->params, $this->newScope()));
+            $this->unit = $unit;
+
+            return;
+        }
+
+        if (($node instanceof Closure || $node instanceof ArrowFunction) && isset($this->pestUnits[spl_object_id($node)])) {
+            $kind = $this->pestUnits[spl_object_id($node)];
+            unset($this->pestUnits[spl_object_id($node)]);
+            $unit = $kind === 'describe' ? $this->unit : $this->enterUnit($kind === 'setup');
+            $this->walk($node, $scope);
+            $this->unit = $unit;
 
             return;
         }
@@ -242,6 +278,18 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
     private function recordCallbacks(CallLike $call): void
     {
         if ($call instanceof FuncCall && $this->isNames($call->name, self::PEST_FUNCTIONS)) {
+            $kind = match (true) {
+                $this->isName($call->name, 'describe') => 'describe',
+                $this->isNames($call->name, self::PEST_SETUP_FUNCTIONS) => 'setup',
+                default => 'test',
+            };
+
+            foreach ($call->getArgs() as $arg) {
+                if ($arg->value instanceof Closure || $arg->value instanceof ArrowFunction) {
+                    $this->pestUnits[spl_object_id($arg->value)] = $kind;
+                }
+            }
+
             return;
         }
 
@@ -330,6 +378,16 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
             return;
         }
 
+        if ($this->isName($root->name, 'shouldNotHaveBeenCalled')) {
+            $this->chains[$binding][] = $outermost;
+
+            if (count($calls) !== 1 || $root->args !== [] || $this->repeating) {
+                $this->disqualified[$binding] = true;
+            }
+
+            return;
+        }
+
         if ($this->isNames($root->name, self::MOCKERY_API) && ! $this->isPortableNativeExpectation($calls)) {
             $this->disqualified[$binding] = true;
         }
@@ -344,6 +402,11 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
         }
 
         $allowed = $this->isNames($root->name, self::RECEIVED_ROOTS) ? self::RECEIVED_METHODS : self::EXPECTATION_METHODS;
+
+        if ($this->isByDefault($calls) && (! $this->isName($root->name, 'shouldReceive')
+            || array_filter($calls, fn (MethodCall $call): bool => $this->isNames($call->name, [...self::COUNT_METHODS, 'with', 'withArgs', 'withNoArgs'])) !== [])) {
+            return false;
+        }
 
         foreach ($calls as $index => $call) {
             if (! $this->isNames($call->name, $allowed) || ! $this->hasSupportedArguments($call)) {
@@ -417,14 +480,73 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
             return false;
         }
 
+        if ($this->isByDefault($calls)) {
+            return false;
+        }
+
         $with = array_values(array_filter($calls, fn (MethodCall $call): bool => $this->isName($call->name, 'with')));
         $arguments = $with === [] ? '*' : ($this->argumentSignature($with[0]) ?? '?');
+
+        if (str_starts_with($binding, 'this->')) {
+            $this->propertyExpectations[$binding][$this->unit][] = [$method->value->value, $arguments];
+
+            return false;
+        }
+
         $previous = $this->signatures[$binding][$method->value->value] ?? [];
         $this->signatures[$binding][$method->value->value][] = $arguments;
 
+        return $this->conflicts($previous, $arguments);
+    }
+
+    /** @param list<string> $previous */
+    private function conflicts(array $previous, string $arguments): bool
+    {
         return in_array($arguments, $previous, true)
             || ($previous !== [] && ($arguments === '?' || in_array('?', $previous, true)))
             || in_array('*', $previous, true);
+    }
+
+    private function disqualifyRepeatedPropertyExpectations(): void
+    {
+        foreach ($this->propertyExpectations as $binding => $units) {
+            $setup = [];
+            foreach (array_intersect_key($units, $this->setupUnits) as $expectations) {
+                $setup = [...$setup, ...$expectations];
+            }
+
+            $tests = array_diff_key($units, $this->setupUnits);
+            foreach ($tests === [] ? [[]] : $tests as $expectations) {
+                $previous = [];
+                foreach ([...$setup, ...$expectations] as [$method, $arguments]) {
+                    if ($this->conflicts($previous[$method] ?? [], $arguments)) {
+                        $this->disqualified[$binding] = true;
+
+                        continue 3;
+                    }
+
+                    $previous[$method][] = $arguments;
+                }
+            }
+        }
+    }
+
+    /** @param list<MethodCall> $calls */
+    private function isByDefault(array $calls): bool
+    {
+        return array_filter($calls, fn (MethodCall $call): bool => $this->isName($call->name, 'byDefault')) !== [];
+    }
+
+    private function enterUnit(bool $setup): string
+    {
+        $previous = $this->unit;
+        $this->unit = 'unit'.++$this->unitCount;
+
+        if ($setup) {
+            $this->setupUnits[$this->unit] = true;
+        }
+
+        return $previous;
     }
 
     private function argumentSignature(MethodCall $with): ?string
@@ -465,7 +587,7 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
 
     private function hasSupportedArguments(MethodCall $call): bool
     {
-        if ($this->isNames($call->name, ['andReturnTrue', 'andReturnFalse', 'andReturnNull', 'andReturnSelf', 'withAnyArgs', 'zeroOrMoreTimes'])) {
+        if ($this->isNames($call->name, ['andReturnTrue', 'andReturnFalse', 'andReturnNull', 'andReturnSelf', 'withAnyArgs', 'zeroOrMoreTimes', 'byDefault'])) {
             return $call->args === [];
         }
 

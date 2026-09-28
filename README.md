@@ -2,7 +2,7 @@
 
 A [Rector](https://getrector.com) set that moves your test doubles from [Mockery](https://github.com/mockery/mockery) to [Double](https://github.com/jasonmccreary/double).
 
-It converts what it can convert safely. It leaves the rest on Mockery, so a converted test never mixes the two libraries.
+It converts what it can convert safely. It leaves the rest on Mockery, so a converted test never mixes the two libraries. The conversions follow Double's [migration guide](https://testdoublephp.com/migrating-from-mockery).
 
 ```php
 // Before
@@ -10,7 +10,7 @@ $repository = Mockery::mock(BookRepository::class);
 $repository->shouldReceive('find')->once()->with(123)->andReturn($book);
 
 // After
-$repository = Double::for(BookRepository::class)->strict();
+$repository = Double::for(BookRepository::class);
 $repository->expects('find')->with(123)->returns($book);
 ```
 
@@ -93,12 +93,12 @@ When the suite passes, remove your `Mockery::close()` calls in the tests that no
 
 | Mockery | Double |
 |---|---|
-| `Mockery::mock(Foo::class)` | `Double::for(Foo::class)->strict()` |
+| `Mockery::mock(Foo::class)` | `Double::for(Foo::class)` |
 | `Mockery::spy(Foo::class)` | `Double::for(Foo::class)` |
-| `Mockery::mock(Foo::class.','.Bar::class)` | `Double::for(Foo::class, Bar::class)->strict()` |
+| `Mockery::mock(Foo::class.','.Bar::class)` | `Double::for(Foo::class, Bar::class)` |
 | `Mockery::mock(Foo::class)->makePartial()` | `Double::for(Foo::class)->passthru()` |
 | `->shouldIgnoreMissing()` | removed, Double is loose by default |
-| `$mock = Mockery::mock(Foo::class, ['get' => 1])` | `$mock = Double::for(Foo::class)->strict();` then `$mock->allows('get')->returns(1);` |
+| `$mock = Mockery::mock(Foo::class, ['get' => 1])` | `$mock = Double::for(Foo::class);` then `$mock->allows('get')->returns(1);` |
 
 ### Expectations
 
@@ -111,8 +111,14 @@ When the suite passes, remove your `Mockery::close()` calls in the tests that no
 | `shouldNotReceive('get')` | `expects('get')->never()` |
 | `shouldHaveReceived('get')` | `received('get')` |
 | `shouldNotHaveReceived('get')` | `received('get')->never()` |
+| `shouldNotHaveBeenCalled()` | `unused()` |
+| `shouldReceive('get')->andReturn(1)->byDefault()` | `allows('get')->returns(1)` |
 
 A plain `shouldReceive()` becomes `allows()`, because Mockery does not require that call. A positive count makes it `expects()`.
+
+A `byDefault()` expectation becomes a plain `allows()`. A later expectation for the same method still wins, as it did with Mockery.
+
+`unused()` fails when the double received any call. Mockery's `shouldNotHaveBeenCalled()` only checked that the mock itself was not invoked, so a converted test can now fail where it passed before.
 
 ### Call counts
 
@@ -170,7 +176,7 @@ A double converts only as a whole: its factory, and every expectation on it. If 
 | Case | Why |
 |---|---|
 | `alias:` and `overload:` mocks | Double has no static mocks. |
-| `byDefault()` | Double keeps every expectation. Mockery drops a default one when another one exists. |
+| `byDefault()` with a call count or with `with()` | Double keeps the count of every expectation. Mockery drops a default one when another one exists. |
 | `globally()` | Double has no order across doubles. |
 | `ducktype()`, `withSomeOfArgs()`, `Mockery::contains()` with several values | Double has no equivalent matcher. |
 | `shouldReceive('tokens->where->pluck')` | Double has no chained expectations. |
@@ -198,36 +204,7 @@ A double converts only as a whole: its factory, and every expectation on it. If 
 | An expectation inside a loop or a callback such as `collect()->each()` | It registers once per run. Double reports this as ambiguous. |
 | An expectation without `with()` before a specific one for the same method | Mockery takes the first match. Double takes the specific one. |
 | `shouldNotReceive()` and `shouldReceive()` on the same method | Double reports this as ambiguous. |
-| `shouldNotHaveBeenCalled()` | Double's `unused()` checks more, so the test would mean something else. |
 | `Mockery::close()` | It is still needed until every double in the test is converted. |
-
-## Tested on real suites
-
-The rules were run on the test suites of ten Laravel packages, before and after conversion, with `VerifiesDoubles` on:
-
-| Package | Tests | Doubles converted | New failures |
-|---|---|---|---|
-| laravel/ai | 3,070 | 41 | 1 |
-| laravel/passport | 210 | 244 | 8 |
-| laravel/boost | 1,111 | 141 | 0 |
-| laravel/mcp | 1,256 | 7 | 0 |
-| laravel/fortify | 120 | 18 | 0 |
-| laravel/reverb (unit tests) | 116 | 26 | 0 |
-| laravel/sanctum | 75 | 12 | 0 |
-| laravel/pint | 854 | 9 | 0 |
-| laravel/tinker | 5 | 4 | 0 |
-| laravel/jetstream | 70 | 0 | 0 |
-
-The 9 new failures come from the strict comparison described in [After the migration](#after-the-migration). One example is `find('1')` where the test expects `with(1)`.
-
-## How it works
-
-The set runs four steps on each file:
-
-1. It expands the `['method' => $value]` shorthand into one expectation per method.
-2. It merges consecutive single-call expectations into one sequence.
-3. It decides, for each double, whether the whole double can convert.
-4. It converts the factories and expectations of those doubles.
 
 ## Development
 
