@@ -48,8 +48,12 @@ final class MockeryExpectationRector extends AbstractRector
 
         $name = $node->name->toString();
 
+        if (in_array($name, ['shouldReceive', 'shouldNotReceive', 'shouldHaveReceived', 'shouldNotHaveReceived'], true)
+            && $node->getAttribute(MockeryDoubleOwnershipRector::OWNED_ATTRIBUTE) !== true) {
+            return null;
+        }
+
         if ($name === 'shouldReceive'
-            && $node->getAttribute(RepeatedMockeryExpectationRector::SKIP_ATTRIBUTE) !== true
             && count($node->args) === 1
             && $node->args[0] instanceof Arg
             && ! $node->args[0]->value instanceof Expr\Array_) {
@@ -194,8 +198,7 @@ final class MockeryExpectationRector extends AbstractRector
 
     private function createNeverExpectation(MethodCall $node): ?MethodCall
     {
-        if ($node->getAttribute(RepeatedMockeryExpectationRector::SKIP_ATTRIBUTE) === true
-            || count($node->args) !== 1
+        if (count($node->args) !== 1
             || ! $node->args[0] instanceof Arg
             || ! $node->args[0]->value instanceof String_) {
             return null;

@@ -17,7 +17,9 @@ use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Expression;
 use PhpParser\Node\Stmt\Function_;
+use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\NodeFinder;
+use Rector\PhpParser\Node\FileNode;
 use Rector\Rector\AbstractRector;
 
 /** Merges consecutive single-call Mockery expectations into one sequential answer. */
@@ -26,21 +28,40 @@ final class SequentialMockeryExpectationRector extends AbstractRector
     /** @return array<class-string<Node>> */
     public function getNodeTypes(): array
     {
-        return [ClassMethod::class, Function_::class, Closure::class];
+        return [FileNode::class];
     }
 
-    /** @param ClassMethod|Function_|Closure $node */
+    /** @param FileNode $node */
     public function refactor(Node $node): ?Node
     {
-        if ($node->stmts === null) {
-            return null;
+        $nodeFinder = new NodeFinder;
+        $containers = [
+            $node,
+            ...$nodeFinder->findInstanceOf($node->stmts, Namespace_::class),
+            ...$nodeFinder->findInstanceOf($node->stmts, ClassMethod::class),
+            ...$nodeFinder->findInstanceOf($node->stmts, Function_::class),
+            ...$nodeFinder->findInstanceOf($node->stmts, Closure::class),
+        ];
+
+        $changed = false;
+        foreach ($containers as $container) {
+            $changed = $this->mergeStatements($container) || $changed;
+        }
+
+        return $changed ? $node : null;
+    }
+
+    private function mergeStatements(FileNode|ClassMethod|Function_|Closure|Namespace_ $container): bool
+    {
+        if ($container->stmts === null) {
+            return false;
         }
 
         $stmts = [];
         $changed = false;
         $run = [];
 
-        foreach ($node->stmts as $stmt) {
+        foreach ($container->stmts as $stmt) {
             $expectation = $this->parseExpectation($stmt);
 
             if ($expectation !== null && $run !== [] && $this->isSameExpectation($run[0][1], $expectation)) {
@@ -49,7 +70,7 @@ final class SequentialMockeryExpectationRector extends AbstractRector
                 continue;
             }
 
-            $changed = $this->flushRun($run, $stmts, $node->stmts) || $changed;
+            $changed = $this->flushRun($run, $stmts, $container->stmts) || $changed;
             $run = $expectation === null ? [] : [[$stmt, $expectation]];
 
             if ($expectation === null) {
@@ -57,15 +78,13 @@ final class SequentialMockeryExpectationRector extends AbstractRector
             }
         }
 
-        $changed = $this->flushRun($run, $stmts, $node->stmts) || $changed;
+        $changed = $this->flushRun($run, $stmts, $container->stmts) || $changed;
 
-        if (! $changed) {
-            return null;
+        if ($changed) {
+            $container->stmts = $stmts;
         }
 
-        $node->stmts = $stmts;
-
-        return $node;
+        return $changed;
     }
 
     /**

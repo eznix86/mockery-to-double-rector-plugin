@@ -33,3 +33,7 @@ it('detects repeated expectations per test, not per file', function (): void {
 it('merges consecutive single-call expectations into one sequential answer', function (): void {
     $this->doTestFile(__DIR__.'/../Fixture/sequential.php.inc');
 });
+
+it('converts a double only when its factory and every expectation on it can convert', function (): void {
+    $this->doTestFile(__DIR__.'/../Fixture/ownership.php.inc');
+});

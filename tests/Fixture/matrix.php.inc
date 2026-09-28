@@ -7,6 +7,7 @@ $strict = Mockery::mock(Repository::class);
 $partial = Mockery::mock(Repository::class)->makePartial();
 $deferred = Mockery::mock(Repository::class)->shouldDeferMissing();
 $loose = Mockery::mock(Repository::class)->shouldIgnoreMissing();
+$repository = Mockery::mock(Repository::class);
 
 $repository->shouldReceive('fail')->andThrow(new RuntimeException('nope'));
 $repository->shouldReceive('failClass')->andThrow(RuntimeException::class, 'nope', 10);
@@ -22,7 +23,7 @@ $repository->shouldHaveReceived('savedOften')->twice();
 $repository->shouldNotHaveReceived('deleted');
 $repository->shouldHaveReceived('legacy', [1, 2]);
 $repository->shouldNotHaveReceived('missing', [3]);
-$repository->shouldNotHaveBeenCalled();
+$unused->shouldNotHaveBeenCalled();
 
 $repository->shouldReceive('match')->with(
     Mockery::on(fn ($value) => $value > 1),
@@ -50,6 +51,7 @@ $strict = \JMac\Testing\Double::for(Repository::class)->strict();
 $partial = \JMac\Testing\Double::for(Repository::class)->passthru();
 $deferred = \JMac\Testing\Double::for(Repository::class)->passthru();
 $loose = \JMac\Testing\Double::for(Repository::class);
+$repository = \JMac\Testing\Double::for(Repository::class)->strict();
 
 $repository->allows('fail')->throws(new RuntimeException('nope'));
 $repository->allows('failClass')->throws(new RuntimeException('nope', 10));
@@ -65,7 +67,7 @@ $repository->received('savedOften')->times(2);
 $repository->received('deleted')->never();
 $repository->received('legacy')->with(1, 2);
 $repository->received('missing')->with(3)->never();
-$repository->shouldNotHaveBeenCalled();
+$unused->shouldNotHaveBeenCalled();
 
 $repository->allows('match')->with(
     \JMac\Testing\Matching\Argument::satisfies(fn ($value) => $value > 1),

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MockeryToDouble\Rector\Rector\MockeryDoubleOwnershipRector;
 use MockeryToDouble\Rector\Rector\MockeryExpectationRector;
 use MockeryToDouble\Rector\Rector\MockeryStaticCallRector;
 use MockeryToDouble\Rector\Rector\RepeatedMockeryExpectationRector;
@@ -12,6 +13,7 @@ return RectorConfig::configure()
     ->withRules([
         SequentialMockeryExpectationRector::class,
         RepeatedMockeryExpectationRector::class,
+        MockeryDoubleOwnershipRector::class,
         MockeryStaticCallRector::class,
         MockeryExpectationRector::class,
     ]);
