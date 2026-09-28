@@ -12,9 +12,11 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
@@ -25,7 +27,11 @@ use PhpParser\Node\Scalar\Float_;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
+use PhpParser\Node\Stmt\Do_;
+use PhpParser\Node\Stmt\For_;
+use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\Function_;
+use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
 use PHPStan\Reflection\ClassReflection;
 use PHPStan\Reflection\ReflectionProvider;
@@ -67,6 +73,8 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
 
     private const REGISTRATIONS = ['swap', 'instance', 'singleton', 'bind', 'scoped'];
 
+    private const PEST_FUNCTIONS = ['test', 'it', 'describe', 'beforeEach', 'afterEach', 'beforeAll', 'afterAll'];
+
     private int $scopeCount = 0;
 
     public function __construct(
@@ -88,6 +96,14 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
     /** @var array<string, array<string, list<string>>> */
     private array $signatures = [];
 
+    /** @var array<string, true> */
+    private array $matchers = [];
+
+    /** @var array<int, true> */
+    private array $callbacks = [];
+
+    private bool $repeating = false;
+
     /** @return array<class-string<Node>> */
     public function getNodeTypes(): array
     {
@@ -102,6 +118,9 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
         $this->disqualified = [];
         $this->seen = [];
         $this->signatures = [];
+        $this->matchers = [];
+        $this->callbacks = [];
+        $this->repeating = false;
 
         $this->walk($node->stmts, $this->newScope());
 
@@ -141,6 +160,18 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
             return;
         }
 
+        if ($node instanceof For_ || $node instanceof Foreach_ || $node instanceof While_ || $node instanceof Do_) {
+            $this->walkRepeating($node, $scope);
+
+            return;
+        }
+
+        if (($node instanceof Closure || $node instanceof ArrowFunction) && isset($this->callbacks[spl_object_id($node)]) && ! $this->repeating) {
+            $this->walkRepeating($node, $scope);
+
+            return;
+        }
+
         if ($node instanceof Closure) {
             $inner = $this->newScope();
             foreach ($node->uses as $use) {
@@ -164,6 +195,14 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
             $this->recordFactory($node, $scope);
         }
 
+        if ($node instanceof StaticCall && $this->isMockeryFactory($node) && $this->declaresReservedMethod($node)) {
+            $node->setAttribute(self::KEEP_ATTRIBUTE, true);
+        }
+
+        if ($node instanceof CallLike && ! $node->isFirstClassCallable()) {
+            $this->recordCallbacks($node);
+        }
+
         if (($node instanceof MethodCall || $node instanceof StaticCall) && $this->isNames($node->name, self::REGISTRATIONS)) {
             $this->keepRegisteredFactories($node);
         }
@@ -180,6 +219,39 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
         }
     }
 
+    private function walkRepeating(Node $node, BindingScope $scope): void
+    {
+        $repeating = $this->repeating;
+        $this->repeating = true;
+
+        if ($node instanceof Closure || $node instanceof ArrowFunction) {
+            $this->callbacks[spl_object_id($node)] = true;
+            $this->walk($node, $scope);
+        } else {
+            foreach ($node->getSubNodeNames() as $name) {
+                $subNode = $node->{$name};
+                if ($subNode instanceof Node || is_array($subNode)) {
+                    $this->walk($subNode, $scope);
+                }
+            }
+        }
+
+        $this->repeating = $repeating;
+    }
+
+    private function recordCallbacks(CallLike $call): void
+    {
+        if ($call instanceof FuncCall && $this->isNames($call->name, self::PEST_FUNCTIONS)) {
+            return;
+        }
+
+        foreach ($call->getArgs() as $arg) {
+            if ($arg->value instanceof Closure || $arg->value instanceof ArrowFunction) {
+                $this->callbacks[spl_object_id($arg->value)] = true;
+            }
+        }
+    }
+
     private function recordFactory(Assign $assign, BindingScope $scope): void
     {
         $binding = $this->resolveBinding($assign->var, $scope);
@@ -189,7 +261,11 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
             $factory = $factory->var;
         }
 
-        if (! $this->isMockeryFactory($factory)) {
+        if ($binding !== null && $factory instanceof StaticCall && $this->isName($factory->class, 'Mockery') && ! $this->isMockeryFactory($factory)) {
+            $this->matchers[$binding] = true;
+        }
+
+        if (! $factory instanceof StaticCall || ! $this->isMockeryFactory($factory)) {
             return;
         }
 
@@ -244,7 +320,10 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
         if ($this->isNames($root->name, [...self::EXPECTATION_ROOTS, ...self::RECEIVED_ROOTS])) {
             $this->chains[$binding][] = $outermost;
 
-            if (! $this->isSupportedChain($calls) || $this->repeatsExpectation($binding, $calls)) {
+            if ($this->repeating
+                || ! $this->isSupportedChain($calls)
+                || $this->repeatsExpectation($binding, $calls)
+                || $this->usesMatcherVariable($calls, $scope)) {
                 $this->disqualified[$binding] = true;
             }
 
@@ -278,6 +357,55 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
         }
 
         return true;
+    }
+
+    /** @param non-empty-list<MethodCall> $calls */
+    private function usesMatcherVariable(array $calls, BindingScope $scope): bool
+    {
+        foreach ($calls as $call) {
+            foreach ($this->isName($call->name, 'with') ? $call->getArgs() : [] as $arg) {
+                $binding = $this->resolveBinding($arg->value, $scope);
+                if ($binding !== null && isset($this->matchers[$binding])) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function declaresReservedMethod(StaticCall $factory): bool
+    {
+        foreach ($this->targetClasses($factory) ?? [] as $class) {
+            foreach (self::DOUBLE_RESERVED_METHODS as $reserved) {
+                if ($class->hasNativeMethod($reserved) && ! $class->getNativeMethod($reserved)->isPrivate()) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /** @return list<ClassReflection>|null */
+    private function targetClasses(StaticCall $factory): ?array
+    {
+        $first = $factory->args[0] ?? null;
+        $classes = [];
+
+        foreach ($first instanceof Arg ? MockeryFactory::targets($first) ?? [] : [] as $target) {
+            $name = $target->value instanceof String_
+                ? ltrim($target->value->value, '\\')
+                : ($target->value instanceof ClassConstFetch ? $this->getName($target->value->class) : null);
+
+            if ($name === null || ! $this->reflectionProvider->hasClass($name)) {
+                return null;
+            }
+
+            $classes[] = $this->reflectionProvider->getClass($name);
+        }
+
+        return $classes;
     }
 
     /** @param non-empty-list<MethodCall> $calls */
@@ -402,24 +530,16 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
     {
         $classes = [];
         foreach ($factories as $factory) {
-            foreach (MockeryFactory::targets($factory->args[0]) ?? [] as $target) {
-                $name = $target->value instanceof String_
-                    ? ltrim($target->value->value, '\\')
-                    : ($target->value instanceof ClassConstFetch ? $this->getName($target->value->class) : null);
-
-                if ($name === null || ! $this->reflectionProvider->hasClass($name)) {
-                    return true;
-                }
-
-                $class = $this->reflectionProvider->getClass($name);
-                foreach (self::DOUBLE_RESERVED_METHODS as $reserved) {
-                    if ($class->hasNativeMethod($reserved) && ! $class->getNativeMethod($reserved)->isPrivate()) {
-                        return false;
-                    }
-                }
-
-                $classes[] = $class;
+            $targets = $this->targetClasses($factory);
+            if ($targets === null) {
+                return true;
             }
+
+            if ($this->declaresReservedMethod($factory)) {
+                return false;
+            }
+
+            $classes = [...$classes, ...$targets];
         }
 
         foreach ($chains as $chain) {
@@ -442,7 +562,6 @@ final class MockeryDoubleOwnershipRector extends AbstractRector
         return true;
     }
 
-    /** @phpstan-assert-if-true StaticCall $expr */
     private function isMockeryFactory(Expr $expr): bool
     {
         return $expr instanceof StaticCall
