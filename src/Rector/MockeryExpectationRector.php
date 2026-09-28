@@ -82,6 +82,10 @@ final class MockeryExpectationRector extends AbstractRector
             return null;
         }
 
+        if ($name === 'zeroOrMoreTimes' && $kind === self::EXPECTATION && $node->args === [] && $node->var instanceof MethodCall) {
+            return $node->var;
+        }
+
         if ($name === 'withAnyArgs' && $node->args === [] && $node->var instanceof MethodCall) {
             return $node->var;
         }
@@ -117,7 +121,7 @@ final class MockeryExpectationRector extends AbstractRector
         }
 
         return match ($name) {
-            'andReturn' => $this->rename($node, 'returns'),
+            'andReturn', 'andReturns' => $this->rename($node, 'returns'),
             'andReturnUsing' => $this->rename($node, 'resolves'),
             'andReturnTrue' => $this->replaceReturnShortcut($node, 'true'),
             'andReturnFalse' => $this->replaceReturnShortcut($node, 'false'),

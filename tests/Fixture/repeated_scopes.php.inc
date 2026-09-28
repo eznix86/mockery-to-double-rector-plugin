@@ -28,6 +28,18 @@ test('prompt', function (): void {
     $agent->shouldReceive('prompt')->once()->andReturn($response);
 });
 
+describe('nested tests', function (): void {
+    test('first', function (): void {
+        $layout = Mockery::mock(FieldLayout::class);
+        $layout->shouldReceive('getTabs')->andReturn([]);
+    });
+
+    test('second', function (): void {
+        $layout = Mockery::mock(FieldLayout::class);
+        $layout->shouldReceive('getTabs')->andReturn([]);
+    });
+});
+
 -----
 <?php
 
@@ -57,4 +69,16 @@ test('guest', function (): void {
 test('prompt', function (): void {
     $agent = \JMac\Testing\Double::for(Agent::class)->strict();
     $agent->expects('prompt')->returns($response);
+});
+
+describe('nested tests', function (): void {
+    test('first', function (): void {
+        $layout = \JMac\Testing\Double::for(FieldLayout::class)->strict();
+        $layout->allows('getTabs')->returns([]);
+    });
+
+    test('second', function (): void {
+        $layout = \JMac\Testing\Double::for(FieldLayout::class)->strict();
+        $layout->allows('getTabs')->returns([]);
+    });
 });

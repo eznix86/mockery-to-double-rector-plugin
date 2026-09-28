@@ -23,6 +23,9 @@ $provider = Mockery::mock(Provider::class);
 $provider->shouldNotReceive('name');
 $provider->shouldReceive('name')->once()->andReturn('fake');
 
+$flexible = Mockery::mock(Repository::class);
+$flexible->shouldReceive('count')->zeroOrMoreTimes()->andReturn(3);
+
 -----
 <?php
 
@@ -48,3 +51,6 @@ $multiple->shouldNotReceive('stream', 'prompt');
 $provider = Mockery::mock(Provider::class);
 $provider->shouldNotReceive('name');
 $provider->shouldReceive('name')->once()->andReturn('fake');
+
+$flexible = \JMac\Testing\Double::for(Repository::class)->strict();
+$flexible->allows('count')->returns(3);
