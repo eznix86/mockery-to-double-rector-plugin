@@ -41,3 +41,7 @@ it('converts a double only when its factory and every expectation on it can conv
 it('expands Mockery quick definitions into one expectation per method', function (): void {
     $this->doTestFile(__DIR__.'/../Fixture/quick_definitions.php.inc');
 });
+
+it('keeps doubles whose expectations repeat at runtime or depend on Mockery objects', function (): void {
+    $this->doTestFile(__DIR__.'/../Fixture/runtime_shapes.php.inc');
+});
