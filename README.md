@@ -84,6 +84,7 @@ rg 'Mockery|shouldReceive|shouldHaveReceived|byDefault|globally' tests
 | `shouldNotHaveReceived()` | `received()->never()` |
 | `andReturn()` | `returns()` |
 | `andReturnUsing()` | `resolves()` |
+| `andReturns()` | `returns()` |
 | `andReturnTrue()` / `andReturnFalse()` / `andReturnNull()` | `returns(true)` / `returns(false)` / `returns(null)` |
 | `$mock->shouldReceive()->andReturnSelf()` | `$mock->allows()->returns($mock)` |
 | `andThrow($throwable)` | `throws($throwable)` |
@@ -95,6 +96,8 @@ rg 'Mockery|shouldReceive|shouldHaveReceived|byDefault|globally' tests
 | `between(min, max)` | `times(min, max)` |
 | `withNoArgs()` | `with()` |
 | `withAnyArgs()` | removed because an expectation without `with()` matches any arguments |
+| `zeroOrMoreTimes()` | removed because `allows()` accepts any number of calls |
+| `$mock = Mockery::mock(Foo::class, ['method' => $value])` | `$mock = Double::for(Foo::class)->strict();` and `$mock->allows('method')->returns($value);` |
 | `withArgs($callback)` | `with(Argument::all($callback))` |
 | `makePartial()` / `shouldDeferMissing()` | `passthru()` when no constructor conversion is required |
 | `shouldIgnoreMissing()` | removed because loose mode is Double's default |
@@ -114,13 +117,18 @@ rg 'Mockery|shouldReceive|shouldHaveReceived|byDefault|globally' tests
 - **Whole doubles only:** a double converts only when its Mockery factory is visible and every expectation on it has a Double equivalent. The factory must be a local variable in the same test, or a `$this->property` assigned anywhere in the file. If one part cannot convert, the factory, its expectations and their matchers all stay Mockery, so a test never mixes the two libraries. Receivers whose factory is not visible stay Mockery. Examples are `$this->mock(Foo::class, fn ($mock) => ...)` closures, method parameters, and properties set in a parent class.
 - **Declared methods:** Double only configures methods that its target declares. When Rector can load the target class, a double whose expectations name a method that no target declares stays Mockery. This covers magic `__call()` methods and methods missing from an interface, such as `hasVerifiedEmail()` on `Authenticatable`. Run Rector from the project so it uses the project's autoloader. When a class cannot be loaded, this check is skipped.
 - **Demeter chains:** `shouldReceive('tokens->where->pluck')` has no Double equivalent, so its double stays Mockery.
+- **Reserved names:** Double cannot double a class that declares a public or protected `instance`, `expects`, `allows`, `strict`, `passthru`, `received`, `unused` or `verify` method, such as `Illuminate\Http\Request`. Those doubles stay Mockery.
+- **Registered doubles:** a factory passed straight to `swap()`, `instance()`, `singleton()`, `bind()` or `scoped()` stays Mockery, because Laravel's facade `shouldReceive()` and later container lookups expect a Mockery mock.
+- **Quick definitions:** Mockery registers the `['method' => $value]` shorthand as `byDefault()` expectations, which a later expectation overrides. The shorthand expands only when it is assigned to a variable or property and nothing else in the file expects the same method on that receiver. List arrays are constructor arguments and keep the double on Mockery.
 - **Modes:** plain Mockery mocks become strict doubles. Spies and `shouldIgnoreMissing()` use Double's loose default. `makePartial()` and argument-free `shouldDeferMissing()` become `passthru()`. Constructor-argument passthroughs remain unchanged because Double needs a real instance rather than Mockery's constructor array.
 - **Ordering:** per-mock `ordered()` remains valid and is retained. Chains containing `globally()` remain unchanged because Double has no cross-double global order.
 - **Sequential answers:** consecutive statements of the form `$mock->shouldReceive('m')->once()->andReturn($value)`, with the same `with(...)` arguments, merge into one `expects('m')->times(n)->returns(...)` chain. The answers keep their order. This applies only when no other expectation for that method exists in the same test.
-- **Repeated answers:** other repeated expectations with the same receiver, method, and simple `with(...)` signature in the same test keep their double on Mockery for manual consolidation. Distinct argument-specific expectations are still converted. Expectations in different tests do not count as repeated, even when they share a variable name.
+- **Matching order:** Double lets a specific `with()` win over a generic expectation, whichever comes first. Mockery takes the first match in declaration order. When an expectation without `with()` comes before a specific one for the same method, the answers would change, so the double stays Mockery. The reverse order behaves the same in both and converts.
+- **Strict comparison:** Double compares plain `with()` values with `===`, while Mockery compares them with `==`. The rule keeps plain values as they are, as [Double's migration guide](https://testdoublephp.com/migrating-from-mockery) recommends. A converted test can fail where the code passes `'1'` for `with(1)`, or a `Stringable` for a string. That failure points at a mismatch the Mockery test did not check.
+- **Repeated answers:** other repeated expectations on the same double for the same method keep that double on Mockery for manual consolidation. Expectations whose `with(...)` arguments are different literals still convert. Arguments that are not literals, such as `with($connection)`, cannot be compared, so they count as repeated. Expectations in different tests, including sibling tests inside `describe()`, do not count as repeated.
 - **Negative expectations:** `shouldNotReceive()` counts as a repeated expectation. Double reports a `never()` expectation and a counted expectation with the same signature as ambiguous, so both remain unchanged.
 - **`andReturnSelf()`:** this converts only when the receiver is a variable or a property of a variable, so `returns(...)` can name it again. An inline `Mockery::mock(...)->shouldReceive(...)->andReturnSelf()` remains unchanged.
-- **Targets:** comma-separated targets become separate `Double::for()` arguments. Partial-mock targets such as `'Foo[bar]'`, and dynamic strings that cannot be split, remain unchanged.
+- **Targets:** comma-separated targets become separate `Double::for()` arguments. Partial-mock targets such as `'Foo[bar]'`, `'Foo|Bar'` targets, and dynamic strings that cannot be split, remain unchanged.
 - **Features that did not carry over:** aliases, static mocks, `ducktype()`, `byDefault()` and `shouldAllowMockingProtectedMethods()` keep their double on Mockery.
 - **`shouldNotHaveBeenCalled()`:** this remains unchanged. Despite its name, Mockery only checks invocation of the mock itself, whereas Double's `unused()` checks every method call; converting it automatically would strengthen the assertion and could change a test's meaning.
 
@@ -165,7 +173,7 @@ Those cases should be migrated with dedicated rules once their exact Double equi
 
 The rules run in this order:
 
-1. A merge rule combines consecutive single-call expectations into one Mockery `times(n)->andReturn(...)` chain.
-2. A repeated-expectation rule marks the remaining repeated expectations, so their return order is never reversed.
-3. An ownership rule decides for each double whether it converts as a whole.
+1. A quick-definition rule expands the `['method' => $value]` shorthand into one Mockery expectation per method.
+2. A merge rule combines consecutive single-call expectations into one Mockery `times(n)->andReturn(...)` chain.
+3. An ownership rule decides for each double whether it converts as a whole. It also keeps repeated expectations on Mockery, so their return order is never reversed.
 4. The factory rule and the expectation rule convert only what the ownership rule marked.

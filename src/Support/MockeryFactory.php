@@ -45,7 +45,7 @@ final class MockeryFactory
             return null;
         }
 
-        if ($arg->value instanceof String_ && ! str_contains($arg->value->value, ',') && ! str_contains($arg->value->value, '[')) {
+        if ($arg->value instanceof String_ && ! str_contains($arg->value->value, ',') && ! str_contains($arg->value->value, '[') && ! str_contains($arg->value->value, '|')) {
             return [$arg];
         }
 
@@ -67,7 +67,7 @@ final class MockeryFactory
                 continue;
             }
 
-            if (! $piece instanceof String_ || str_contains($piece->value, '[')) {
+            if (! $piece instanceof String_ || str_contains($piece->value, '[') || str_contains($piece->value, '|')) {
                 return null;
             }
 

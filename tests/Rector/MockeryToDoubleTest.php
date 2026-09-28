@@ -37,3 +37,7 @@ it('merges consecutive single-call expectations into one sequential answer', fun
 it('converts a double only when its factory and every expectation on it can convert', function (): void {
     $this->doTestFile(__DIR__.'/../Fixture/ownership.php.inc');
 });
+
+it('expands Mockery quick definitions into one expectation per method', function (): void {
+    $this->doTestFile(__DIR__.'/../Fixture/quick_definitions.php.inc');
+});

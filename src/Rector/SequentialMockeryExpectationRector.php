@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MockeryToDouble\Rector\Rector;
 
+use MockeryToDouble\Rector\Support\StatementContainers;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -34,17 +35,8 @@ final class SequentialMockeryExpectationRector extends AbstractRector
     /** @param FileNode $node */
     public function refactor(Node $node): ?Node
     {
-        $nodeFinder = new NodeFinder;
-        $containers = [
-            $node,
-            ...$nodeFinder->findInstanceOf($node->stmts, Namespace_::class),
-            ...$nodeFinder->findInstanceOf($node->stmts, ClassMethod::class),
-            ...$nodeFinder->findInstanceOf($node->stmts, Function_::class),
-            ...$nodeFinder->findInstanceOf($node->stmts, Closure::class),
-        ];
-
         $changed = false;
-        foreach ($containers as $container) {
+        foreach (StatementContainers::in($node) as $container) {
             $changed = $this->mergeStatements($container) || $changed;
         }
 

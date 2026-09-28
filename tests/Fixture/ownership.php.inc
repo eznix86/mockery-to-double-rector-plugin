@@ -80,6 +80,42 @@ final class OwnershipTest
 
         $client = Mockery::mock(Client::class);
         $client->shouldReceive('tokens->where->pluck')->andReturn([]);
+
+        $director = Mockery::mock(\Mockery\ExpectationDirector::class);
+        $director->shouldReceive('call')->andReturn(null);
+    }
+
+    public function testNestedPropertyDouble(): void
+    {
+        $token->refreshToken = Mockery::mock(RefreshToken::class);
+        $token->refreshToken->shouldReceive('revoke')->once();
+        $registry['cache'] = Mockery::mock(Cache::class);
+    }
+
+    public function testRegisteredAndUncomparableDoubles(): void
+    {
+        File::swap(Mockery::mock(Filesystem::class));
+        File::shouldReceive('exists')->andReturn(true);
+        $this->app->instance(Cache::class, Mockery::mock(Cache::class)->makePartial());
+
+        $channels = Mockery::mock(ChannelManager::class);
+        $channels->shouldReceive('unsubscribeFromAll')->once()->with($first);
+        $channels->shouldReceive('unsubscribeFromAll')->once()->with($second);
+
+        $routes = Mockery::mock(Router::class);
+        $routes->shouldReceive('get')->once()->with('/a');
+        $routes->shouldReceive('get')->once()->with('/b');
+    }
+
+    public function testMatchingOrder(): void
+    {
+        $generic = Mockery::mock(Cache::class);
+        $generic->shouldReceive('get')->andReturn(1);
+        $generic->shouldReceive('get')->with('key')->andReturn(2);
+
+        $specific = Mockery::mock(Cache::class);
+        $specific->shouldReceive('get')->with('key')->andReturn(2);
+        $specific->shouldReceive('get')->andReturn(1);
     }
 }
 
@@ -166,5 +202,41 @@ final class OwnershipTest
 
         $client = Mockery::mock(Client::class);
         $client->shouldReceive('tokens->where->pluck')->andReturn([]);
+
+        $director = Mockery::mock(\Mockery\ExpectationDirector::class);
+        $director->shouldReceive('call')->andReturn(null);
+    }
+
+    public function testNestedPropertyDouble(): void
+    {
+        $token->refreshToken = \JMac\Testing\Double::for(RefreshToken::class)->strict();
+        $token->refreshToken->expects('revoke');
+        $registry['cache'] = Mockery::mock(Cache::class);
+    }
+
+    public function testRegisteredAndUncomparableDoubles(): void
+    {
+        File::swap(Mockery::mock(Filesystem::class));
+        File::shouldReceive('exists')->andReturn(true);
+        $this->app->instance(Cache::class, Mockery::mock(Cache::class)->makePartial());
+
+        $channels = Mockery::mock(ChannelManager::class);
+        $channels->shouldReceive('unsubscribeFromAll')->once()->with($first);
+        $channels->shouldReceive('unsubscribeFromAll')->once()->with($second);
+
+        $routes = \JMac\Testing\Double::for(Router::class)->strict();
+        $routes->expects('get')->with('/a');
+        $routes->expects('get')->with('/b');
+    }
+
+    public function testMatchingOrder(): void
+    {
+        $generic = Mockery::mock(Cache::class);
+        $generic->shouldReceive('get')->andReturn(1);
+        $generic->shouldReceive('get')->with('key')->andReturn(2);
+
+        $specific = \JMac\Testing\Double::for(Cache::class)->strict();
+        $specific->allows('get')->with('key')->returns(2);
+        $specific->allows('get')->returns(1);
     }
 }
