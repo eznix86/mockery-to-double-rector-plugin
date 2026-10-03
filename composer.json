@@ -8,7 +8,7 @@
     "rector/rector": "^2.6.1"
   },
   "require-dev": {
-    "jasonmccreary/double": "^0.10",
+    "jasonmccreary/double": "^1.0",
     "laravel/pint": "^1.30",
     "mockery/mockery": "^1.6",
     "pestphp/pest": "^5.0",
